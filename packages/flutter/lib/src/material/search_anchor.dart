@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+/// @docImport 'package:flutter/services.dart';
+library;
+
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -143,6 +146,7 @@ class SearchAnchor extends StatefulWidget {
     this.textCapitalization,
     this.viewOnChanged,
     this.viewOnSubmitted,
+    this.viewOnClose,
     required this.builder,
     required this.suggestionsBuilder,
     this.textInputAction,
@@ -168,6 +172,7 @@ class SearchAnchor extends StatefulWidget {
     GestureTapCallback? onTap,
     ValueChanged<String>? onSubmitted,
     ValueChanged<String>? onChanged,
+    VoidCallback? onClose,
     MaterialStateProperty<double?>? barElevation,
     MaterialStateProperty<Color?>? barBackgroundColor,
     MaterialStateProperty<Color?>? barOverlayColor,
@@ -201,6 +206,7 @@ class SearchAnchor extends StatefulWidget {
     TextInputType? keyboardType,
     EdgeInsets scrollPadding,
     EditableTextContextMenuBuilder contextMenuBuilder,
+    bool enabled,
   }) = _SearchAnchorWithSearchBar;
 
   /// Whether the search view grows to fill the entire screen when the
@@ -366,6 +372,9 @@ class SearchAnchor extends StatefulWidget {
   /// of the search view.
   final ValueChanged<String>? viewOnSubmitted;
 
+  /// Called when the search view is closed.
+  final VoidCallback? viewOnClose;
+
   /// Called to create a widget which can open a search view route when it is tapped.
   ///
   /// The widget returned by this builder is faded out when it is tapped.
@@ -455,6 +464,7 @@ class _SearchAnchorState extends State<SearchAnchor> {
     _route = _SearchViewRoute(
       viewOnChanged: widget.viewOnChanged,
       viewOnSubmitted: widget.viewOnSubmitted,
+      viewOnClose: widget.viewOnClose,
       viewLeading: widget.viewLeading,
       viewTrailing: widget.viewTrailing,
       viewHintText: widget.viewHintText,
@@ -488,7 +498,7 @@ class _SearchAnchorState extends State<SearchAnchor> {
 
   void _closeView(String? selectedText) {
     if (selectedText != null) {
-      _searchController.text = selectedText;
+      _searchController.value = TextEditingValue(text: selectedText);
     }
     Navigator.of(context).pop();
   }
@@ -533,6 +543,7 @@ class _SearchViewRoute extends PopupRoute<_SearchViewRoute> {
   _SearchViewRoute({
     this.viewOnChanged,
     this.viewOnSubmitted,
+    this.viewOnClose,
     this.toggleVisibility,
     this.textDirection,
     this.viewBuilder,
@@ -564,6 +575,7 @@ class _SearchViewRoute extends PopupRoute<_SearchViewRoute> {
 
   final ValueChanged<String>? viewOnChanged;
   final ValueChanged<String>? viewOnSubmitted;
+  final VoidCallback? viewOnClose;
   final ValueGetter<bool>? toggleVisibility;
   final TextDirection? textDirection;
   final ViewBuilder? viewBuilder;
@@ -637,6 +649,7 @@ class _SearchViewRoute extends PopupRoute<_SearchViewRoute> {
     assert(anchorKey.currentContext != null);
     updateTweens(anchorKey.currentContext!);
     toggleVisibility?.call();
+    viewOnClose?.call();
     return super.didPop(result);
   }
 
@@ -1179,11 +1192,13 @@ class _SearchAnchorWithSearchBar extends SearchAnchor {
     super.textCapitalization,
     ValueChanged<String>? onChanged,
     ValueChanged<String>? onSubmitted,
+    VoidCallback? onClose,
     required super.suggestionsBuilder,
     super.textInputAction,
     super.keyboardType,
     EdgeInsets scrollPadding = const EdgeInsets.all(20.0),
     EditableTextContextMenuBuilder contextMenuBuilder = SearchBar._defaultContextMenuBuilder,
+    super.enabled,
   }) : super(
          viewHintText: viewHintText ?? barHintText,
          headerHeight: viewHeaderHeight,
@@ -1191,6 +1206,7 @@ class _SearchAnchorWithSearchBar extends SearchAnchor {
          headerHintStyle: viewHeaderHintStyle,
          viewOnSubmitted: onSubmitted,
          viewOnChanged: onChanged,
+         viewOnClose: onClose,
          builder: (BuildContext context, SearchController controller) {
            return SearchBar(
              constraints: constraints,

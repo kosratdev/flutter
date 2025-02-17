@@ -174,12 +174,9 @@ class FlutterConfiguration {
 
   /// Auto detect which rendering backend to use.
   ///
-  /// Using flutter tools option "--web-renderer=auto" or not specifying one
-  /// would set the value to true. Otherwise, it would be false.
-  static const bool flutterWebAutoDetect = bool.fromEnvironment(
-    'FLUTTER_WEB_AUTO_DETECT',
-    defaultValue: true,
-  );
+  /// Using flutter tools option "--web-renderer=auto" would set the value to
+  /// true. Otherwise, it would be false.
+  static const bool flutterWebAutoDetect = bool.fromEnvironment('FLUTTER_WEB_AUTO_DETECT');
 
   static const bool flutterWebUseSkwasm = bool.fromEnvironment('FLUTTER_WEB_USE_SKWASM');
 
@@ -278,6 +275,13 @@ class FlutterConfiguration {
     'FLUTTER_WEB_CANVASKIT_FORCE_CPU_ONLY',
   );
 
+  bool get canvasKitForceMultiSurfaceRasterizer =>
+      _configuration?.canvasKitForceMultiSurfaceRasterizer ??
+      _defaultCanvasKitForceMultiSurfaceRasterizer;
+  static const bool _defaultCanvasKitForceMultiSurfaceRasterizer = bool.fromEnvironment(
+    'FLUTTER_WEB_CANVASKIT_FORCE_MULTI_SURFACE_RASTERIZER',
+  );
+
   /// The maximum number of canvases to use when rendering in CanvasKit.
   ///
   /// Limits the amount of overlays that can be created.
@@ -372,6 +376,10 @@ extension JsFlutterConfigurationExtension on JsFlutterConfiguration {
   @JS('canvasKitForceCpuOnly')
   external JSBoolean? get _canvasKitForceCpuOnly;
   bool? get canvasKitForceCpuOnly => _canvasKitForceCpuOnly?.toDart;
+
+  @JS('canvasKitForceMultiSurfaceRasterizer')
+  external JSBoolean? get _canvasKitForceMultiSurfaceRasterizer;
+  bool? get canvasKitForceMultiSurfaceRasterizer => _canvasKitForceMultiSurfaceRasterizer?.toDart;
 
   @JS('canvasKitMaximumSurfaces')
   external JSNumber? get _canvasKitMaximumSurfaces;

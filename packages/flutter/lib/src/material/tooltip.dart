@@ -186,6 +186,7 @@ class Tooltip extends StatefulWidget {
     this.enableFeedback,
     this.onTriggered,
     this.mouseCursor,
+    this.ignorePointer,
     this.child,
   }) : assert(
          (message == null) != (richMessage == null),
@@ -362,6 +363,17 @@ class Tooltip extends StatefulWidget {
   ///
   /// If this property is null, [MouseCursor.defer] will be used.
   final MouseCursor? mouseCursor;
+
+  /// Whether this tooltip should be invisible to hit testing.
+  ///
+  /// If no value is passed, pointer events are ignored unless the tooltip has a
+  /// [richMessage] instead of a [message].
+  ///
+  /// See also:
+  ///
+  /// * [IgnorePointer], for more information about how pointer events are
+  /// handled or ignored.
+  final bool? ignorePointer;
 
   static final List<TooltipState> _openedTooltips = <TooltipState>[];
 
@@ -771,10 +783,12 @@ class TooltipState extends State<Tooltip> with SingleTickerProviderStateMixin {
 
   EdgeInsets _getDefaultPadding() {
     return switch (Theme.of(context).platform) {
-      TargetPlatform.macOS || TargetPlatform.linux || TargetPlatform.windows =>
-        const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-      TargetPlatform.android || TargetPlatform.fuchsia || TargetPlatform.iOS =>
-        const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+      TargetPlatform.macOS ||
+      TargetPlatform.linux ||
+      TargetPlatform.windows => const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      TargetPlatform.android ||
+      TargetPlatform.fuchsia ||
+      TargetPlatform.iOS => const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
     };
   }
 
@@ -844,6 +858,7 @@ class TooltipState extends State<Tooltip> with SingleTickerProviderStateMixin {
       verticalOffset:
           widget.verticalOffset ?? tooltipTheme.verticalOffset ?? _defaultVerticalOffset,
       preferBelow: widget.preferBelow ?? tooltipTheme.preferBelow ?? _defaultPreferBelow,
+      ignorePointer: widget.ignorePointer ?? widget.message != null,
     );
 
     return SelectionContainer.maybeOf(context) == null
@@ -969,6 +984,7 @@ class _TooltipOverlay extends StatelessWidget {
     required this.target,
     required this.verticalOffset,
     required this.preferBelow,
+    required this.ignorePointer,
     this.onEnter,
     this.onExit,
   });
@@ -986,6 +1002,7 @@ class _TooltipOverlay extends StatelessWidget {
   final bool preferBelow;
   final PointerEnterEventListener? onEnter;
   final PointerExitEventListener? onExit;
+  final bool ignorePointer;
 
   @override
   Widget build(BuildContext context) {
@@ -1022,7 +1039,7 @@ class _TooltipOverlay extends StatelessWidget {
           verticalOffset: verticalOffset,
           preferBelow: preferBelow,
         ),
-        child: result,
+        child: IgnorePointer(ignoring: ignorePointer, child: result),
       ),
     );
   }

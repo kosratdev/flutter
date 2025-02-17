@@ -15,7 +15,7 @@ import 'package:flutter_tools/src/dart/package_map.dart';
 import 'package:flutter_tools/src/features.dart';
 import 'package:flutter_tools/src/globals.dart' as globals;
 import 'package:flutter_tools/src/isolated/native_assets/native_assets.dart';
-import 'package:native_assets_cli/code_assets_builder.dart' hide BuildMode;
+import 'package:native_assets_cli/code_assets_builder.dart';
 import 'package:package_config/package_config_types.dart';
 
 import '../../../src/common.dart';
@@ -30,6 +30,7 @@ void main() {
   late FileSystem fileSystem;
   late BufferLogger logger;
   late Uri projectUri;
+  late String runPackageName;
 
   setUp(() {
     processManager = FakeProcessManager.empty();
@@ -46,6 +47,7 @@ void main() {
     );
     environment.buildDir.createSync(recursive: true);
     projectUri = environment.projectDir.uri;
+    runPackageName = environment.projectDir.basename;
   });
 
   for (final bool flutterTester in <bool>[false, true]) {
@@ -278,17 +280,17 @@ void main() {
             ),
           ];
           final FakeFlutterNativeAssetsBuildRunner buildRunner = FakeFlutterNativeAssetsBuildRunner(
-            packagesWithNativeAssetsResult: <Package>[Package('bar', projectUri)],
+            packagesWithNativeAssetsResult: <String>['bar'],
             onBuild:
-                (BuildConfig config) => FakeFlutterNativeAssetsBuilderResult.fromAssets(
-                  codeAssets: codeAssets(config.targetOS, config.codeConfig),
+                (BuildInput input) => FakeFlutterNativeAssetsBuilderResult.fromAssets(
+                  codeAssets: codeAssets(input.config.code.targetOS, input.config.code),
                 ),
             onLink:
-                (LinkConfig config) =>
+                (LinkInput input) =>
                     buildMode == BuildMode.debug
                         ? null
                         : FakeFlutterNativeAssetsBuilderResult.fromAssets(
-                          codeAssets: codeAssets(config.targetOS, config.codeConfig),
+                          codeAssets: codeAssets(input.config.code.targetOS, input.config.code),
                         ),
           );
           final Map<String, String> environmentDefines = <String, String>{
@@ -324,8 +326,8 @@ void main() {
           expect(
             (globals.logger as BufferLogger).traceText,
             stringContainsInOrder(<String>[
-              'Building native assets for macos $expectedArchsBeingBuilt $buildMode.',
-              'Building native assets for macos $expectedArchsBeingBuilt $buildMode done.',
+              'Building native assets for macos $expectedArchsBeingBuilt.',
+              'Building native assets for macos $expectedArchsBeingBuilt done.',
             ]),
           );
           final String nativeAssetsFileContent =
@@ -335,10 +337,8 @@ void main() {
             stringContainsInOrder(<String>[
               'package:bar/bar.dart',
               if (flutterTester)
-                    // Tests run on host system, so the have the full path on the system.
-                    projectUri
-                    .resolve('build/native_assets/macos/libbar.dylib')
-                    .toFilePath()
+                // Tests run on host system, so the have the full path on the system.
+                projectUri.resolve('build/native_assets/macos/libbar.dylib').toFilePath()
               else
                 // Apps are a bundle with the dylibs on their dlopen path.
                 'bar.framework/bar',
@@ -349,10 +349,8 @@ void main() {
             stringContainsInOrder(<String>[
               'package:buz/buz.dart',
               if (flutterTester)
-                    // Tests run on host system, so the have the full path on the system.
-                    projectUri
-                    .resolve('build/native_assets/macos/libbuz.dylib')
-                    .toFilePath()
+                // Tests run on host system, so the have the full path on the system.
+                projectUri.resolve('build/native_assets/macos/libbuz.dylib').toFilePath()
               else
                 // Apps are a bundle with the dylibs on their dlopen path.
                 'buz.framework/buz',
@@ -401,13 +399,13 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         logger: environment.logger,
       );
       final FlutterNativeAssetsBuildRunner runner = FlutterNativeAssetsBuildRunnerImpl(
-        projectUri,
         packageConfigFile.path,
         packageConfig,
         fileSystem,
         logger,
+        runPackageName,
       );
-      final CCompilerConfig result = await runner.cCompilerConfig;
+      final CCompilerConfig result = (await runner.cCompilerConfig)!;
       expect(
         result.compiler,
         Uri.file(

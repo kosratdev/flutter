@@ -123,15 +123,18 @@ class Canvas {
 
   Canvas(ContentContext& renderer,
          const RenderTarget& render_target,
+         bool is_onscreen,
          bool requires_readback);
 
   explicit Canvas(ContentContext& renderer,
                   const RenderTarget& render_target,
+                  bool is_onscreen,
                   bool requires_readback,
                   Rect cull_rect);
 
   explicit Canvas(ContentContext& renderer,
                   const RenderTarget& render_target,
+                  bool is_onscreen,
                   bool requires_readback,
                   IRect cull_rect);
 
@@ -248,9 +251,20 @@ class Canvas {
   // Visible for testing.
   bool RequiresReadback() const { return requires_readback_; }
 
+  // Whether the current device has the capabilities to blit an offscreen
+  // texture into the onscreen.
+  //
+  // This requires the availibility of the blit framebuffer command, but is
+  // disabled for GLES. A simple glBlitFramebuffer does not support resolving
+  // different sample counts which may be present in GLES when using MSAA.
+  //
+  // Visible for testing.
+  bool SupportsBlitToOnscreen() const;
+
  private:
   ContentContext& renderer_;
   RenderTarget render_target_;
+  const bool is_onscreen_;
   bool requires_readback_;
   EntityPassClipStack clip_coverage_stack_;
 
@@ -318,7 +332,7 @@ class Canvas {
                                         bool should_remove_texture = false,
                                         bool should_use_onscreen = false);
 
-  bool BlitToOnscreen();
+  bool BlitToOnscreen(bool is_onscreen = false);
 
   size_t GetClipHeight() const;
 

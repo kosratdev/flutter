@@ -139,8 +139,7 @@ class PlaceholderDimensions {
       ui.PlaceholderAlignment.bottom ||
       ui.PlaceholderAlignment.middle ||
       ui.PlaceholderAlignment.aboveBaseline ||
-      ui.PlaceholderAlignment.belowBaseline =>
-        'PlaceholderDimensions($size, $alignment)',
+      ui.PlaceholderAlignment.belowBaseline => 'PlaceholderDimensions($size, $alignment)',
       ui.PlaceholderAlignment.baseline =>
         'PlaceholderDimensions($size, $alignment($baselineOffset from top))',
     };
@@ -222,8 +221,7 @@ class WordBoundary extends TextBoundary {
       0x000B || // Form Feed
       0x000C || // Vertical Feed
       0x2028 || // Line Separator
-      0x2029 =>
-        true, // Paragraph Separator
+      0x2029 => true, // Paragraph Separator
       _ => false,
     };
   }
@@ -381,8 +379,7 @@ class _TextLayout {
       0x0009 => true, // horizontal tab
       0x00A0 || // no-break space
       0x2007 || // figure space
-      0x202F =>
-        false, // narrow no-break space
+      0x202F => false, // narrow no-break space
       _ => _regExpSpaceSeparators.hasMatch(lastCodeUnit),
     };
 
@@ -1531,9 +1528,7 @@ class TextPainter {
     final _TextPainterLayoutCacheWithOffset cachedLayout = _layoutCache!;
     // If nothing is laid out, top start is the only reasonable place to place
     // the cursor.
-    // The HTML renderer reports numberOfLines == 1 when the text is empty:
-    // https://github.com/flutter/flutter/issues/143331
-    if (cachedLayout.paragraph.numberOfLines < 1 || plainText.isEmpty) {
+    if (cachedLayout.paragraph.numberOfLines < 1) {
       // TODO(LongCatIsLooong): assert when an invalid position is given.
       return null;
     }
@@ -1591,31 +1586,16 @@ class TextPainter {
       boxHeightStyle: ui.BoxHeightStyle.strut,
     );
 
-    if (boxes.isNotEmpty) {
-      final bool anchorToLeft = switch (glyphInfo.writingDirection) {
-        TextDirection.ltr => anchorToLeadingEdge,
-        TextDirection.rtl => !anchorToLeadingEdge,
-      };
-      final TextBox box = anchorToLeft ? boxes.first : boxes.last;
-      metrics = _LineCaretMetrics(
-        offset: Offset(anchorToLeft ? box.left : box.right, box.top),
-        writingDirection: box.direction,
-        height: box.bottom - box.top,
-      );
-    } else {
-      // Fall back to glyphInfo. This should only happen when using the HTML renderer.
-      assert(kIsWeb && !isSkiaWeb);
-      final Rect graphemeBounds = glyphInfo.graphemeClusterLayoutBounds;
-      final double dx = switch (glyphInfo.writingDirection) {
-        TextDirection.ltr => anchorToLeadingEdge ? graphemeBounds.left : graphemeBounds.right,
-        TextDirection.rtl => anchorToLeadingEdge ? graphemeBounds.right : graphemeBounds.left,
-      };
-      metrics = _LineCaretMetrics(
-        offset: Offset(dx, graphemeBounds.top),
-        writingDirection: glyphInfo.writingDirection,
-        height: graphemeBounds.height,
-      );
-    }
+    final bool anchorToLeft = switch (glyphInfo.writingDirection) {
+      TextDirection.ltr => anchorToLeadingEdge,
+      TextDirection.rtl => !anchorToLeadingEdge,
+    };
+    final TextBox box = anchorToLeft ? boxes.first : boxes.last;
+    metrics = _LineCaretMetrics(
+      offset: Offset(anchorToLeft ? box.left : box.right, box.top),
+      writingDirection: box.direction,
+      height: box.bottom - box.top,
+    );
 
     cachedLayout._previousCaretPositionKey = caretPositionCacheKey;
     return _caretMetrics = metrics;

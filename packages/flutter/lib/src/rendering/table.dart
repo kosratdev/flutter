@@ -4,8 +4,10 @@
 
 import 'dart:collection';
 import 'dart:math' as math;
+import 'dart:ui' show SemanticsRole;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/semantics.dart';
 
 import 'box.dart';
 import 'object.dart';
@@ -601,6 +603,13 @@ class RenderTable extends RenderBox {
     }
   }
 
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    config.role = SemanticsRole.table;
+    config.explicitChildNodes = true;
+  }
+
   /// Replaces the children of this table with the given cells.
   ///
   /// The cells are divided into the specified number of columns before
@@ -759,6 +768,12 @@ class RenderTable extends RenderBox {
         visitor(child);
       }
     }
+  }
+
+  @protected
+  @override
+  void redepthChildren() {
+    visitChildren(redepthChild);
   }
 
   @override
@@ -1063,8 +1078,7 @@ class RenderTable extends RenderBox {
         TableCellVerticalAlignment.middle ||
         TableCellVerticalAlignment.bottom ||
         TableCellVerticalAlignment.fill ||
-        TableCellVerticalAlignment.intrinsicHeight =>
-          null,
+        TableCellVerticalAlignment.intrinsicHeight => null,
       };
       if (childBaseline != null && (baselineOffset == null || baselineOffset < childBaseline)) {
         baselineOffset = childBaseline;

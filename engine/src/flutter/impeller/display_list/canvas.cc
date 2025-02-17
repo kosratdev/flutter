@@ -43,6 +43,7 @@
 #include "impeller/geometry/color.h"
 #include "impeller/geometry/constants.h"
 #include "impeller/geometry/path_builder.h"
+#include "impeller/renderer/command_buffer.h"
 
 namespace impeller {
 
@@ -162,9 +163,11 @@ static std::unique_ptr<EntityPassTarget> CreateRenderTarget(
 
 Canvas::Canvas(ContentContext& renderer,
                const RenderTarget& render_target,
+               bool is_onscreen,
                bool requires_readback)
     : renderer_(renderer),
       render_target_(render_target),
+      is_onscreen_(is_onscreen),
       requires_readback_(requires_readback),
       clip_coverage_stack_(EntityPassClipStack(
           Rect::MakeSize(render_target.GetRenderTargetSize()))) {
@@ -174,10 +177,12 @@ Canvas::Canvas(ContentContext& renderer,
 
 Canvas::Canvas(ContentContext& renderer,
                const RenderTarget& render_target,
+               bool is_onscreen,
                bool requires_readback,
                Rect cull_rect)
     : renderer_(renderer),
       render_target_(render_target),
+      is_onscreen_(is_onscreen),
       requires_readback_(requires_readback),
       clip_coverage_stack_(EntityPassClipStack(
           Rect::MakeSize(render_target.GetRenderTargetSize()))) {
@@ -187,10 +192,12 @@ Canvas::Canvas(ContentContext& renderer,
 
 Canvas::Canvas(ContentContext& renderer,
                const RenderTarget& render_target,
+               bool is_onscreen,
                bool requires_readback,
                IRect cull_rect)
     : renderer_(renderer),
       render_target_(render_target),
+      is_onscreen_(is_onscreen),
       requires_readback_(requires_readback),
       clip_coverage_stack_(EntityPassClipStack(
           Rect::MakeSize(render_target.GetRenderTargetSize()))) {
@@ -810,10 +817,14 @@ void Canvas::DrawVertices(const std::shared_ptr<VerticesGeometry>& vertices,
   } else {
     auto cvg = vertices->GetCoverage(Matrix{});
     FML_CHECK(cvg.has_value());
-    src_coverage =
-        // Covered by FML_CHECK.
-        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-        vertices->GetTextureCoordinateCoverge().value_or(cvg.value());
+    auto texture_coverage = vertices->GetTextureCoordinateCoverage();
+    if (texture_coverage.has_value()) {
+      src_coverage =
+          Rect::MakeOriginSize(texture_coverage->GetOrigin(),
+                               texture_coverage->GetSize().Max({1, 1}));
+    } else {
+      src_coverage = cvg.value();
+    }
   }
   src_contents = src_paint.CreateContents();
 
@@ -825,15 +836,15 @@ void Canvas::DrawVertices(const std::shared_ptr<VerticesGeometry>& vertices,
   contents->SetAlpha(paint.color.alpha);
   contents->SetGeometry(vertices);
   contents->SetLazyTextureCoverage(src_coverage);
-  contents->SetLazyTexture(
-      [src_contents, src_coverage](const ContentContext& renderer) {
-        // Applying the src coverage as the coverage limit prevents the 1px
-        // coverage pad from adding a border that is picked up by developer
-        // specified UVs.
-        return src_contents
-            ->RenderToSnapshot(renderer, {}, Rect::Round(src_coverage))
-            ->texture;
-      });
+  contents->SetLazyTexture([src_contents,
+                            src_coverage](const ContentContext& renderer) {
+    // Applying the src coverage as the coverage limit prevents the 1px
+    // coverage pad from adding a border that is picked up by developer
+    // specified UVs.
+    auto snapshot =
+        src_contents->RenderToSnapshot(renderer, {}, Rect::Round(src_coverage));
+    return snapshot.has_value() ? snapshot->texture : nullptr;
+  });
   entity.SetContents(paint.WithFilters(std::move(contents)));
   AddRenderEntityToCurrentPass(entity);
 }
@@ -1010,12 +1021,19 @@ void Canvas::SaveLayer(const Paint& paint,
   // sampling mode.
   ISize subpass_size;
   bool did_round_out = false;
+  Point coverage_origin_adjustment = Point{0, 0};
   if (paint.image_filter) {
     subpass_size = ISize(subpass_coverage.GetSize());
   } else {
     did_round_out = true;
     subpass_size =
         static_cast<ISize>(IRect::RoundOut(subpass_coverage).GetSize());
+    // If rounding out, adjust the coverage to account for the subpixel shift.
+    coverage_origin_adjustment =
+        Point(subpass_coverage.GetLeftTop().x -
+                  std::floor(subpass_coverage.GetLeftTop().x),
+              subpass_coverage.GetLeftTop().y -
+                  std::floor(subpass_coverage.GetLeftTop().y));
   }
   if (subpass_size.IsEmpty()) {
     return SkipUntilMatchingRestore(total_content_depth);
@@ -1149,7 +1167,8 @@ void Canvas::SaveLayer(const Paint& paint,
                                              subpass_size,              //
                                              Color::BlackTransparent()  //
                                              )));
-  save_layer_state_.push_back(SaveLayerState{paint_copy, subpass_coverage});
+  save_layer_state_.push_back(SaveLayerState{
+      paint_copy, subpass_coverage.Shift(-coverage_origin_adjustment)});
 
   CanvasStackEntry entry;
   entry.transform = transform_stack_.back().transform;
@@ -1647,6 +1666,10 @@ std::shared_ptr<Texture> Canvas::FlipBackdrop(Point global_pass_position,
   // applied.
   auto& replay_entities = clip_coverage_stack_.GetReplayEntities();
   for (const auto& replay : replay_entities) {
+    if (replay.clip_depth <= current_depth_) {
+      continue;
+    }
+
     SetClipScissor(replay.clip_coverage, current_render_pass,
                    global_pass_position);
     if (!replay.clip_contents.Render(renderer_, current_render_pass,
@@ -1658,25 +1681,27 @@ std::shared_ptr<Texture> Canvas::FlipBackdrop(Point global_pass_position,
   return input_texture;
 }
 
-bool Canvas::BlitToOnscreen() {
+bool Canvas::SupportsBlitToOnscreen() const {
+  return renderer_.GetContext()
+             ->GetCapabilities()
+             ->SupportsTextureToTextureBlits() &&
+         renderer_.GetContext()->GetBackendType() !=
+             Context::BackendType::kOpenGLES;
+}
+
+bool Canvas::BlitToOnscreen(bool is_onscreen) {
   auto command_buffer = renderer_.GetContext()->CreateCommandBuffer();
   command_buffer->SetLabel("EntityPass Root Command Buffer");
   auto offscreen_target = render_passes_.back()
                               .inline_pass_context->GetPassTarget()
                               .GetRenderTarget();
 
-  if (renderer_.GetContext()
-          ->GetCapabilities()
-          ->SupportsTextureToTextureBlits()) {
+  if (SupportsBlitToOnscreen()) {
     auto blit_pass = command_buffer->CreateBlitPass();
     blit_pass->AddCopy(offscreen_target.GetRenderTargetTexture(),
                        render_target_.GetRenderTargetTexture());
     if (!blit_pass->EncodeCommands()) {
       VALIDATION_LOG << "Failed to encode root pass blit command.";
-      return false;
-    }
-    if (!renderer_.GetContext()->EnqueueCommandBuffer(
-            std::move(command_buffer))) {
       return false;
     }
   } else {
@@ -1704,25 +1729,28 @@ bool Canvas::BlitToOnscreen() {
       VALIDATION_LOG << "Failed to encode root pass command buffer.";
       return false;
     }
-    if (!renderer_.GetContext()->EnqueueCommandBuffer(
-            std::move(command_buffer))) {
-      return false;
-    }
   }
-  return true;
+
+  if (is_onscreen) {
+    return renderer_.GetContext()->SubmitOnscreen(std::move(command_buffer));
+  } else {
+    return renderer_.GetContext()->EnqueueCommandBuffer(
+        std::move(command_buffer));
+  }
 }
 
 void Canvas::EndReplay() {
   FML_DCHECK(render_passes_.size() == 1u);
   render_passes_.back().inline_pass_context->GetRenderPass();
-  render_passes_.back().inline_pass_context->EndPass();
+  render_passes_.back().inline_pass_context->EndPass(
+      /*is_onscreen=*/!requires_readback_ && is_onscreen_);
   backdrop_data_.clear();
 
   // If requires_readback_ was true, then we rendered to an offscreen texture
   // instead of to the onscreen provided in the render target. Now we need to
   // draw or blit the offscreen back to the onscreen.
   if (requires_readback_) {
-    BlitToOnscreen();
+    BlitToOnscreen(/*is_onscreen_=*/is_onscreen_);
   }
 
   if (!renderer_.GetContext()->FlushCommandBuffers()) {
